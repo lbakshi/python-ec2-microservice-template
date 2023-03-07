@@ -32,6 +32,10 @@ Assuming everything is setup correctly, on merge to main, the workflow will depl
 - Change ```.github/workflows/build_and_deploy.yaml```
     - Change ```env.IMAGE-NAME``` to your desired image name. This is unrelated to whatever name you use for the makefile
 - Change your code and merge to main. This will automatically deploy your code to a new container and run it in your ec2 instance. To hit your server, get your ec2 instance's Public IPv4 and curl that address as ```[your host name]:8080/api/hello```
+
+## Known Errors
+- Commands to install docker don't run correctly on ec2 spin-up. You may need to ssh into your instance and run the commands manually before your instance is created.
+
 ## IaC to add
 - Run on EKS instead
 - Add endpoint & api key guards
