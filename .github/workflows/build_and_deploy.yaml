@@ -1,0 +1,68 @@
+name: deploy-to-ec2
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  IMAGE_NAME: my-image
+  IMAGE_TAG: ${{ github.sha }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ var.AWS_DEFAULT_REGION }}
+
+      - name: Get public IPv4 DNS for EC2 instance
+        id: get-dns
+        run: |
+          echo "::set-output name=dns::$(aws ec2 describe-instances --instance-ids ${{ vars.INSTANCE_ID }} --query 'Reservations[0].Instances[0].PublicDnsName' --output text)"
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and tag Docker image
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker build -t $ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG .
+          echo "::set-output name=image-url::$ECR_REGISTRY/$IMAGE_NAME:$IMAGE_TAG"
+
+      - name: Push Docker image to ECR
+        env:
+          IMAGE_URL: ${{ steps.build-image.outputs.image-url }}
+        run: |
+          docker push $IMAGE_URL
+
+      - name: Install SSH dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+      - name: Create SSH key file
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+      - name: Deploy to EC2 instance
+        env:
+          CLUSTER_DNS: ${{ steps.get-dns.outputs.dns}}
+          IMAGE_URL: ${{ steps.build-image.outputs.image-url }}
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ env.CLUSTER_DNS }} "sudo service docker start"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ env.CLUSTER_DNS }} "sudo aws ecr get-login-password --region ${{ env.AWS_DEFAULT_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ env.CLUSTER_DNS }} "docker ps -a | grep scholar-api | awk '{print $1}' | xargs -r docker stop || true"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ env.CLUSTER_DNS }} "docker ps -a | grep scholar-api | awk '{print $1}' | xargs -r docker rm || true"
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=no ec2-user@${{ env.CLUSTER_DNS }} "docker pull $IMAGE_URL && docker run -d -p 8080:8080 $IMAGE_URL && docker image prune"
+
