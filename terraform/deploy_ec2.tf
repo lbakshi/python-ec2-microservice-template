@@ -4,8 +4,8 @@ provider "aws" {
 }
 
 # Create an IAM role to give EC2 instance permissions to access ECR
-resource "aws_iam_role" "ec2_ecr_role" {
-  name = "${var.project_name}_ec2_ecr_role"
+resource "aws_iam_role" "ec2_role" {
+  name = "${var.project_name}_ec2_role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -24,7 +24,7 @@ resource "aws_iam_role" "ec2_ecr_role" {
 # Attach the required policies to the IAM role
 resource "aws_iam_role_policy_attachment" "ec2_ecr_policy" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
-  role       = aws_iam_role.ec2_ecr_role.name
+  role       = aws_iam_role.ec2_role.name
 }
 
 # Create a security group that allows inbound traffic on port 8080 and egress traffic on all ports.
@@ -60,10 +60,16 @@ resource "aws_instance" "myapp_instance" {
   instance_type = var.instance_type
   key_name = "{var.project_name}-test-key"
   security_groups = [aws_security_group.scholar_app_sg.name]
-  iam_instance_profile = aws_iam_instance_profile.ec2_ecr_profile.name
+  iam_instance_profile = aws_iam_instance_profile.ec2_profile.name
 
-  # This doesn't work atm. Needs to be manually run on the server when first starting up
   provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      user        = "ec2-user"
+      private_key = file("${path.module}/${var.key_pair_pem_file}")
+      host        = self.public_ip
+    }
+
     inline = [
       "echo 'Running provisioner'",
       "sudo yum update -y",
@@ -80,7 +86,7 @@ resource "aws_instance" "myapp_instance" {
 }
 
 # Create an IAM instance profile to attach the IAM role to the EC2 instance
-resource "aws_iam_instance_profile" "ec2_ecr_profile" {
-  name = "${var.project_name}_ec2_ecr_profile"
-  role = aws_iam_role.ec2_ecr_role.name
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}_ec2_profile"
+  role = aws_iam_role.ec2_role.name
 }

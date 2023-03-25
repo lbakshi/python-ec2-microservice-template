@@ -27,3 +27,9 @@ variable region {
     default = "us-west-2"
     description = "The region to use"
 }
+
+variable key_pair_pem_file {
+    type = string
+    default = "template-test-key.pem"
+    description = "decoded key pair pub file name"
+}

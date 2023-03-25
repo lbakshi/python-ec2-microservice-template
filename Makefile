@@ -26,16 +26,16 @@ ssh:
 
 # Initialize Terraform
 init:
-	terraform init
+	terraform -chdir="./terraform" init
 
 # Plan the infrastructure changes to be made
 plan:
-	terraform plan
+	terraform -chdir="./terraform" plan
 
 # Apply the infrastructure changes
-apply: plan
-	terraform apply
+apply:
+	terraform -chdir="./terraform" apply -auto-approve
 
 # Destroy the infrastructure
 destroy:
-	terraform destroy
+	terraform -chdir="./terraform" destroy
